@@ -21,9 +21,9 @@ metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
-take_profit_pct = 0.3  
-stop_loss_pct = 0.02     
-holding_days = 30
+take_profit_pct = 0.1  
+stop_loss_pct = 0.01     
+holding_days = 10
 slippage = 0.001
 fees = 0.002
 cap = 2 # NUMBER OF ASSET TO DIVERSIFY
@@ -49,7 +49,6 @@ asset_trading_hours = {
 
 
 exclude = index + metals + bank_stocks
-
 close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
 df_close = data[close_cols].copy()
 
@@ -153,13 +152,13 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
         else:
             continue
 
-        tp_idx = future_data[future_data["hit_tp"]].index.min()
-        sl_idx = future_data[future_data["hit_sl"]].index.min()
-
         holding_limit_idx = future_data[future_data['cum_minutes'] <= holding_period_minutes].index.max()
-
         if pd.isna(holding_limit_idx):
             continue
+        future_data = future_data.loc[:holding_limit_idx]
+
+        tp_idx = future_data[future_data["hit_tp"]].index.min()
+        sl_idx = future_data[future_data["hit_sl"]].index.min()
 
         exit_time = None
         exit_reason = None
