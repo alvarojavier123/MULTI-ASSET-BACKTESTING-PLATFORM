@@ -14,20 +14,27 @@ data = data.apply(pd.to_numeric, errors='coerce')
 data.replace(0.0, np.nan, inplace=True)
 data = data.loc[data.index > '2024-01-01']  # OUT-SAMPLE
 
-stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN"]
+
+stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", "JPM", "INTC", "BAC"]
+
+tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC"]
 metals = ["XAU"]
 index = ["US500"]
+crypto = ["BTCUSD"]
 
 cap = 2
 
-exclude = metals + index  # Combine lists to exclude
 
+exclude = ['US500', 'XAU']
 close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
 df_close = data[close_cols].copy()
+print(df_close.head(300))
+
+
 #print(df_close.head(50))
 
 
-def apply_volatility_to_df(df_close, window=50, factor=np.sqrt(252)):
+def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
     volatility = pd.DataFrame(index=df_close.index)
 
     for col in df_close.columns:
@@ -43,23 +50,23 @@ def apply_volatility_to_df(df_close, window=50, factor=np.sqrt(252)):
     return volatility
 
 
-volatility = apply_volatility_to_df(df_close, window=50)
-#print(volatility.head(50))
+volatility = apply_volatility_to_df(df_close, window=20)
+#print(volatility.head(300))
 
 volatility_clean = volatility.dropna(how='any')  # Filtra filas con al menos un NaN
-#print(volatility_clean.head(50))
+#print(volatility_clean.head(300))
 
 vol_ranks = volatility_clean.rank(axis=1, ascending=True)
 #print(vol_ranks.head(50))
 
 long_signal = (vol_ranks <= cap).astype(int)
-print(long_signal.loc['2020-01-28':'2020-02-20'])
+#print(long_signal.loc['2020-04-01':'2020-05-01'])
 
 
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
 min_df.replace(0.0, np.nan, inplace=True)
 min_df.sort_index(inplace=True)
-min_df = min_df.loc[min_df.index > '2024-01-01']  # OUT-SAMPLE
+min_df = min_df.loc[min_df.index > '2024-01-01']  # 
 
 
 
@@ -87,27 +94,35 @@ for date in long_signal.index:
 # Holding hours por día según activo
 
 asset_trading_hours = {
-    "AAPL": 6.5,     # Acciones EE.UU.
+
+    "NFLX": 6.5,
+    "AAPL": 6.5,
     "MSFT": 6.5,
     "NVDA": 6.5,
     "GOOGL": 6.5,
     "META": 6.5,
     "AMZN": 6.5,
-    "SPX": 6.5,      # Índice (referencial)
-    "US500": 23,     # CFD o futuro sobre S&P 500
-    "XAU": 23,       # Oro en formato abreviado
-    "BTC": 24        # Cripto 24/7
+    "WFC": 6.5,
+    "ORCL": 6.5,
+    "JPM": 6.5,
+    "INTC": 6.5,
+    "BAC": 6.5,
+    "XAU": 23,
+    "US500": 23,
+    "BTCUSD": 24
 }
 
 
-take_profit_pct = 0.1  #
-stop_loss_pct = 0.01    # 
-holding_days = 20
+
+take_profit_pct = 0.3  #
+stop_loss_pct = 0.02    # 
+holding_days = 30
 slippage = 0.001
 fees = 0.002
 
 
-assets = stocks
+
+assets = tech_stocks + crypto
 results = []
 
 for asset in tqdm(assets, desc="Backtesting Progress"):
@@ -277,7 +292,10 @@ for i, row in results_df.iterrows():
 filtered_df = pd.DataFrame(filtered_trades)
 print(filtered_df.head(50))
 
-# Step 2: Compute portfolio returns per 3 trades
+# Replace the incorrect compounding logic with correct equal-weight averaging
+
+# ... [rest of your code is unchanged up to portfolio return calculation] ...
+
 chunks = [filtered_df.iloc[i:i+cap] for i in range(0, len(filtered_df), cap)]
 returns_summary = []
 portfolio_returns = []
@@ -285,11 +303,14 @@ return_dates = []
 
 for chunk in chunks:
     if len(chunk) == cap:
-        total_return = (chunk['return'] + 1).prod() - 1
+        # FIX: Correct portfolio return for equal capital allocation (not compounded)
+        total_return = chunk['return'].mean()  # <== THIS IS THE FIX
+
         assets = ', '.join(chunk['asset'])
         entry_times = ', '.join(chunk['entry_time'].astype(str))
         exit_times = ', '.join(chunk['exit_time'].astype(str))
         exit_reasons = ', '.join(chunk['exit_reason'])
+
         portfolio_returns.append(total_return)
         return_dates.append(pd.to_datetime(chunk['exit_time'].max()))
 
@@ -303,6 +324,8 @@ for chunk in chunks:
 
 summary_df = pd.DataFrame(returns_summary)
 print(summary_df.head())
+
+
 
 # Step 3: Compute performance metrics and plot
 import numpy as np
@@ -412,11 +435,3 @@ import plotly.io as pio
 pio.renderers.default = "browser"
 fig.show()
 
-
-"""
-res = input("Continue ?")
-        if res == "":
-                    print("--------------------------------------------------------------")
-                    continue
-        
-"""
