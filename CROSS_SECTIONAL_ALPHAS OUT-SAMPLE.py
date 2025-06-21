@@ -7,8 +7,6 @@ import warnings
 from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
-
-
 # === Load and clean data ===
 data = pd.read_csv('ALL_ASSETS_DAILY.csv', parse_dates=['Unnamed: 0'])
 data = data.set_index('Unnamed: 0')
@@ -16,19 +14,41 @@ data = data.apply(pd.to_numeric, errors='coerce')
 data.replace(0.0, np.nan, inplace=True)
 data = data.loc[data.index > '2024-01-01']  # OUT-SAMPLE
 
-
 stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", "JPM", "INTC", "BAC"]
-
 tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC"]
 bank_stocks = ["WFC", "JPM", "BAC"]
 metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
-cap = 2
+take_profit_pct = 0.1  
+stop_loss_pct = 0.01     
+holding_days = 10
+slippage = 0.001
+fees = 0.002
+cap = 2 # NUMBER OF ASSET TO DIVERSIFY
+
+asset_trading_hours = {
+    "NFLX": 6.5,
+    "AAPL": 6.5,
+    "MSFT": 6.5,
+    "NVDA": 6.5,
+    "GOOGL": 6.5,
+    "META": 6.5,
+    "AMZN": 6.5,
+    "WFC": 6.5,
+    "ORCL": 6.5,
+    "JPM": 6.5,
+    "INTC": 6.5,
+    "BAC": 6.5,
+    "XAU": 23,
+    "US500": 23,
+    "BTCUSD": 24
+}
+
+
 
 exclude = index + metals + bank_stocks
-
 close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
 df_close = data[close_cols].copy()
 
@@ -65,7 +85,7 @@ strategy = long_signal
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
 min_df.replace(0.0, np.nan, inplace=True)
 min_df.sort_index(inplace=True)
-min_df = min_df.loc[min_df.index < '2024-01-01']  # IN-SAMPLE
+min_df = min_df.loc[min_df.index > '2024-01-01']  # OUT-SAMPLE
 
 
 assets = [col.replace("close_", "") for col in strategy.columns]
@@ -84,103 +104,61 @@ for date in strategy.index:
             signal = strategy.at[date, f'close_{asset}']
             min_df.at[timestamp, signal_col] = signal
 
-#print(min_df.loc['2020-05-04 00:00:00':'2020-05-05 00:00:00'])
-
-# Holding hours por día según activo
-
-asset_trading_hours = {
-
-    "NFLX": 6.5,
-    "AAPL": 6.5,
-    "MSFT": 6.5,
-    "NVDA": 6.5,
-    "GOOGL": 6.5,
-    "META": 6.5,
-    "AMZN": 6.5,
-    "WFC": 6.5,
-    "ORCL": 6.5,
-    "JPM": 6.5,
-    "INTC": 6.5,
-    "BAC": 6.5,
-    "XAU": 23,
-    "US500": 23,
-    "BTCUSD": 24
-}
 
 
-
-take_profit_pct = 0.3  #
-stop_loss_pct = 0.02    # 
-holding_days = 30
-slippage = 0.001
-fees = 0.002
-
-
-
-assets = tech_stocks + crypto
 results = []
 
 for asset in tqdm(assets, desc="Backtesting Progress"):
 
     print(asset)
     hours_per_day = asset_trading_hours[asset]
-    #print("hours_per_day =", hours_per_day)
     holding_period_minutes = int(holding_days * hours_per_day * 60)
-    #print("holding period minutes = ", holding_period_minutes)
 
     signal_col = f'signal_{asset}'
     ohlc_cols = [f"{prefix}_{asset}" for prefix in ["open", "high", "low", "close"]]
 
     columns = ohlc_cols + [signal_col]
     signals = min_df[(min_df[signal_col].notna()) & (min_df[signal_col] != 0)][columns]
-    #print(signals.head(10))
     print(f"{asset} - N señales: {len(signals)}")
-    
-    valid_data = min_df[min_df[f"open_{asset}"].notna()][ohlc_cols].copy()
-    valid_data = valid_data.sort_index() 
 
+    valid_data = min_df[min_df[f"open_{asset}"].notna()][ohlc_cols].copy()
+    valid_data = valid_data.sort_index()
 
     for signal_time in signals.index:
-        
-        #print("SIGNAL TIME = ", signal_time)
+        position = signals.loc[signal_time, signal_col]
         future_data = valid_data.loc[signal_time:, ohlc_cols]
 
         if future_data.empty:
-            continue  # Skip if no future data available
+            continue
 
-
-        
         future_data['cum_minutes'] = range(1, len(future_data) + 1)
-
-        #print(future_data.head(10))
-
         entry_time = future_data.iloc[0].name
-        #print("ENTRY TIME = ", entry_time)
-
         entry_price = future_data.iloc[0][f"open_{asset}"] * (1 + slippage)
 
-        #print("ENTRY PRICE =", entry_price)
+        if position == 1:
+            tp_price = entry_price * (1 + take_profit_pct)
+            sl_price = entry_price * (1 - stop_loss_pct)
 
-        tp_price = entry_price * (1 + take_profit_pct)
-        sl_price = entry_price * (1 - stop_loss_pct)
+            future_data["hit_tp"] = future_data[f"high_{asset}"] >= tp_price
+            future_data["hit_sl"] = future_data[f"low_{asset}"] <= sl_price
 
-        future_data["hit_tp"] = future_data[f"high_{asset}"] >= tp_price
-        future_data["hit_sl"] = future_data[f"low_{asset}"] <= sl_price
+        elif position == -1:
+            tp_price = entry_price * (1 - take_profit_pct)
+            sl_price = entry_price * (1 + stop_loss_pct)
+
+            future_data["hit_tp"] = future_data[f"low_{asset}"] <= tp_price
+            future_data["hit_sl"] = future_data[f"high_{asset}"] >= sl_price
+
+        else:
+            continue
+
+        holding_limit_idx = future_data[future_data['cum_minutes'] <= holding_period_minutes].index.max()
+        if pd.isna(holding_limit_idx):
+            continue
+        future_data = future_data.loc[:holding_limit_idx]
 
         tp_idx = future_data[future_data["hit_tp"]].index.min()
-        #print(tp_idx)
         sl_idx = future_data[future_data["hit_sl"]].index.min()
-        #print(sl_idx)
-
- 
-        holding_limit_idx = future_data[future_data['cum_minutes'] <= holding_period_minutes].index.max()
-        #print("len(holding_limit_idx) = ", len(future_data[future_data['cum_minutes'] <= holding_period_minutes]))
-        #print("holding_limit_idx = ", holding_limit_idx)
-
-        if pd.isna(holding_limit_idx):
-            #print("Si no hay suficientes minutos, no se puede cerrar la operación")
-            continue  # Si no hay suficientes minutos, no se puede cerrar la operación
-
 
         exit_time = None
         exit_reason = None
@@ -191,7 +169,6 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
                 exit_time = tp_idx
                 exit_reason = "TP"
                 exit_price = tp_price * (1 - fees)
-
             else:
                 exit_time = sl_idx
                 exit_reason = "SL"
@@ -212,14 +189,11 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
             exit_reason = "Hold"
             exit_price = future_data.loc[holding_limit_idx][f"close_{asset}"] * (1 - fees)
 
-        #print("exit time = ", exit_time)
-        #print("exit price = ", exit_price)
-
         if pd.isna(exit_time) or pd.isna(exit_price):
             continue
 
+        ret = (exit_price - entry_price) / entry_price if position == 1 else (entry_price - exit_price) / entry_price
 
-        ret = (exit_price - entry_price) / entry_price
         results.append({
             "asset": asset,
             "entry_time": entry_time,
@@ -228,18 +202,19 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
             "exit_price": exit_price,
             "return": ret,
             "exit_reason": exit_reason,
-            "hold_period_day" : holding_limit_idx
+            "hold_period_day": holding_limit_idx,
+            "position": position
         })
-  
+
 
 
 results_df = pd.DataFrame(results)
 results_df = results_df.sort_values(by='entry_time').reset_index(drop=True)
 print(results_df.head(30))
 
-results_df.to_csv("results_df_OUT_SAMPLE.csv")
+results_df.to_csv("results_df_IN_SAMPLE.csv")
 
-results_df = pd.read_csv("results_df_OUT_SAMPLE.csv")
+results_df = pd.read_csv("results_df_IN_SAMPLE.csv")
 print(results_df.head(30))
 
 filtered_trades = []
@@ -430,3 +405,11 @@ import plotly.io as pio
 pio.renderers.default = "browser"
 fig.show()
 
+
+"""
+res = input("Continue ?")
+        if res == "":
+                    print("--------------------------------------------------------------")
+                    continue
+        
+"""
