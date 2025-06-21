@@ -22,7 +22,7 @@ metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
-cap = 4
+cap = 2
 
 
 exclude = ['US500', 'XAU']
