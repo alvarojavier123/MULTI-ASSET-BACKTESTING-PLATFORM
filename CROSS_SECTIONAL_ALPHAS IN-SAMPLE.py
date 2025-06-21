@@ -7,8 +7,6 @@ import warnings
 from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
-
-
 # === Load and clean data ===
 data = pd.read_csv('ALL_ASSETS_DAILY.csv', parse_dates=['Unnamed: 0'])
 data = data.set_index('Unnamed: 0')
@@ -16,16 +14,39 @@ data = data.apply(pd.to_numeric, errors='coerce')
 data.replace(0.0, np.nan, inplace=True)
 data = data.loc[data.index < '2024-01-01']  # IN-SAMPLE
 
-
 stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", "JPM", "INTC", "BAC"]
-
 tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC"]
 bank_stocks = ["WFC", "JPM", "BAC"]
 metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
-cap = 2
+take_profit_pct = 0.3  
+stop_loss_pct = 0.02     
+holding_days = 30
+slippage = 0.001
+fees = 0.002
+cap = 2 # NUMBER OF ASSET TO DIVERSIFY
+
+asset_trading_hours = {
+    "NFLX": 6.5,
+    "AAPL": 6.5,
+    "MSFT": 6.5,
+    "NVDA": 6.5,
+    "GOOGL": 6.5,
+    "META": 6.5,
+    "AMZN": 6.5,
+    "WFC": 6.5,
+    "ORCL": 6.5,
+    "JPM": 6.5,
+    "INTC": 6.5,
+    "BAC": 6.5,
+    "XAU": 23,
+    "US500": 23,
+    "BTCUSD": 24
+}
+
+
 
 exclude = index + metals + bank_stocks
 
@@ -55,10 +76,12 @@ volatility = apply_volatility_to_df(df_close, window=100)
 
 volatility_clean = volatility.dropna(how='any')  # Filtra filas con al menos un NaN
 
-vol_ranks = volatility_clean.rank(axis=1, ascending=False)
+vol_ranks = volatility_clean.rank(axis=1, ascending=True) # FALSE:MOST VOLATILE, TRUE:LESS VOLATILE
 
 long_signal = (vol_ranks <= cap).astype(int)
 print(long_signal.loc['2020-05-27':'2020-05-30'])
+
+strategy = long_signal
 
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
 min_df.replace(0.0, np.nan, inplace=True)
@@ -66,50 +89,24 @@ min_df.sort_index(inplace=True)
 min_df = min_df.loc[min_df.index < '2024-01-01']  # IN-SAMPLE
 
 
-assets = [col.replace("close_", "") for col in long_signal.columns]
+assets = [col.replace("close_", "") for col in strategy.columns]
 
 for asset in assets:
     signal_col = f'signal_{asset}'
     if signal_col not in min_df.columns:
         min_df[signal_col] = np.nan
 
-for date in long_signal.index:
+for date in strategy.index:
     timestamp = pd.Timestamp(f"{date.date()} 23:59:00")
 
     if timestamp in min_df.index:
         for asset in assets:
             signal_col = f'signal_{asset}'
-            signal = long_signal.at[date, f'close_{asset}']
+            signal = strategy.at[date, f'close_{asset}']
             min_df.at[timestamp, signal_col] = signal
 
 
-asset_trading_hours = {
-    "NFLX": 6.5,
-    "AAPL": 6.5,
-    "MSFT": 6.5,
-    "NVDA": 6.5,
-    "GOOGL": 6.5,
-    "META": 6.5,
-    "AMZN": 6.5,
-    "WFC": 6.5,
-    "ORCL": 6.5,
-    "JPM": 6.5,
-    "INTC": 6.5,
-    "BAC": 6.5,
-    "XAU": 23,
-    "US500": 23,
-    "BTCUSD": 24
-}
 
-
-take_profit_pct = 0.3  #
-stop_loss_pct = 0.02    # 
-holding_days = 30
-slippage = 0.001
-fees = 0.002
-
-
-assets = tech_stocks + crypto
 results = []
 
 for asset in tqdm(assets, desc="Backtesting Progress"):

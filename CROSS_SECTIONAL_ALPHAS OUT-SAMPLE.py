@@ -7,6 +7,8 @@ import warnings
 from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
+
+
 # === Load and clean data ===
 data = pd.read_csv('ALL_ASSETS_DAILY.csv', parse_dates=['Unnamed: 0'])
 data = data.set_index('Unnamed: 0')
@@ -18,20 +20,19 @@ data = data.loc[data.index > '2024-01-01']  # OUT-SAMPLE
 stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", "JPM", "INTC", "BAC"]
 
 tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC"]
+bank_stocks = ["WFC", "JPM", "BAC"]
 metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
 cap = 2
 
+exclude = index + metals + bank_stocks
 
-exclude = ['US500', 'XAU']
 close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
 df_close = data[close_cols].copy()
+
 print(df_close.head(300))
-
-
-#print(df_close.head(50))
 
 
 def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
@@ -50,43 +51,37 @@ def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
     return volatility
 
 
-volatility = apply_volatility_to_df(df_close, window=20)
-#print(volatility.head(300))
+volatility = apply_volatility_to_df(df_close, window=100)
 
 volatility_clean = volatility.dropna(how='any')  # Filtra filas con al menos un NaN
-#print(volatility_clean.head(300))
 
-vol_ranks = volatility_clean.rank(axis=1, ascending=True)
-#print(vol_ranks.head(50))
+vol_ranks = volatility_clean.rank(axis=1, ascending=True) # FALSE:MOST VOLATILE, TRUE:LESS VOLATILE
 
 long_signal = (vol_ranks <= cap).astype(int)
-#print(long_signal.loc['2020-04-01':'2020-05-01'])
+print(long_signal.loc['2020-05-27':'2020-05-30'])
 
+strategy = long_signal
 
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
 min_df.replace(0.0, np.nan, inplace=True)
 min_df.sort_index(inplace=True)
-min_df = min_df.loc[min_df.index > '2024-01-01']  # 
+min_df = min_df.loc[min_df.index < '2024-01-01']  # IN-SAMPLE
 
 
+assets = [col.replace("close_", "") for col in strategy.columns]
 
-# Get all assets from long_signal columns (e.g., AAPL, MSFT, etc.)
-assets = [col.replace("close_", "") for col in long_signal.columns]
-
-# Initialize signal columns if not present
 for asset in assets:
     signal_col = f'signal_{asset}'
     if signal_col not in min_df.columns:
         min_df[signal_col] = np.nan
 
-# Assign the daily signal at 23:59 of each date
-for date in long_signal.index:
+for date in strategy.index:
     timestamp = pd.Timestamp(f"{date.date()} 23:59:00")
 
     if timestamp in min_df.index:
         for asset in assets:
             signal_col = f'signal_{asset}'
-            signal = long_signal.at[date, f'close_{asset}']
+            signal = strategy.at[date, f'close_{asset}']
             min_df.at[timestamp, signal_col] = signal
 
 #print(min_df.loc['2020-05-04 00:00:00':'2020-05-05 00:00:00'])
