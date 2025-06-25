@@ -6,14 +6,8 @@ BTC_USDT_1h_since_2020.csv
 BTC_USDT_1min_since_2020.csv
 news.csv
 results_df_IN_SAMPLE.csv
-CRYPTO-HOURS/
-CRYPTO-MINUTES/
-STOCKS-HOURS/
-STOCKS-MINUTES/
-INDEX-HOURS/
-INDEX-MINUTES/
-METALS-HOURS/
-METALS-MINUTES/
+results_df_OUT_SAMPLE.csv
+ASSETS/
 
 *.parquet
 *.pkl
