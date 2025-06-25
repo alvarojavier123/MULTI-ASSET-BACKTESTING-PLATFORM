@@ -12,7 +12,7 @@ data = pd.read_csv('ALL_ASSETS_DAILY.csv', parse_dates=['Unnamed: 0'])
 data = data.set_index('Unnamed: 0')
 data = data.apply(pd.to_numeric, errors='coerce')
 data.replace(0.0, np.nan, inplace=True)
-data = data.loc[data.index > '2024-01-01']  # OUT-SAMPLE
+data = data.loc[data.index > '2024-01-01']  # IN-SAMPLE
 
 stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", "JPM", "INTC", "BAC"]
 tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC"]
@@ -21,12 +21,12 @@ metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
-take_profit_pct = 0.1  
-stop_loss_pct = 0.01     
-holding_days = 10
+take_profit_pct = 0.3  
+stop_loss_pct = 0.03 
+holding_days = 40
 slippage = 0.001
 fees = 0.002
-cap = 2 # NUMBER OF ASSET TO DIVERSIFY
+cap = 3 # NUMBER OF ASSET TO DIVERSIFY
 
 asset_trading_hours = {
     "NFLX": 6.5,
@@ -47,45 +47,67 @@ asset_trading_hours = {
 }
 
 
-
-exclude = index + metals + bank_stocks
-close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
+#exclude = index + metals + bank_stocks
+#close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
+close_cols = [col for col in data.columns if col.startswith('close_')]
 df_close = data[close_cols].copy()
-
 print(df_close.head(300))
 
+lookback = 30
+strategy = pd.DataFrame(0, index=df_close.index, columns=df_close.columns)
 
-def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
-    volatility = pd.DataFrame(index=df_close.index)
+for asset_col in df_close.columns:
+    print("asset_col = ", asset_col)
+    for i in df_close.index:
+        if i < df_close.index[0] + pd.Timedelta(days=lookback):
+            continue
 
-    for col in df_close.columns:
-        prices = df_close[col]
-        clean_prices = prices.dropna()
-        clean_returns = clean_prices.pct_change()
-        clean_vol = clean_returns.rolling(window=window, min_periods=window).std() * factor
-        full_vol = pd.Series(index=prices.index, dtype='float64')
-        full_vol.loc[clean_vol.index] = clean_vol
+        df = df_close.loc[i - pd.Timedelta(days=lookback):i, asset_col]
+        #print(df)
+        df = df.dropna()
+        #print(df)
 
-        volatility[f'{col}'] = full_vol
+        price_direction = df.iloc[-1] - df.iloc[0]
+        #print("price direction = ", price_direction)
+        diff = df.diff()
+        #print("diff = ", diff)
+        mean = diff.mean()
+        #print("mean = ", mean)
+        std_dev = diff.std()
+        #print("std = ", std_dev)
+        threshold = diff.mean() + 3 * diff.std()
+        #print("second std = ", threshold)
 
-    return volatility
+        best_line = np.polyfit(df[:-1], df[1:], 1)
+        slope = best_line[0]
+
+        if slope > 0.5 and price_direction > threshold:
+            #print("SIGNAL!")
+            strategy.at[i, asset_col] = slope
+           
+        
+        #print("---------------------------------------")
 
 
-volatility = apply_volatility_to_df(df_close, window=100)
+#print(strategy.head(100))
+strategy = strategy.replace(0, np.nan)
 
-volatility_clean = volatility.dropna(how='any')  # Filtra filas con al menos un NaN
 
-vol_ranks = volatility_clean.rank(axis=1, ascending=True) # FALSE:MOST VOLATILE, TRUE:LESS VOLATILE
+valid_rows = strategy.notna().sum(axis=1) >= cap
 
-long_signal = (vol_ranks <= cap).astype(int)
-print(long_signal.loc['2020-05-27':'2020-05-30'])
+filtered_strategy = strategy[valid_rows]
 
-strategy = long_signal
+ranks = filtered_strategy.rank(axis=1, ascending=False)
+
+
+strategy = (ranks <= cap).astype(int)
+
+
 
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
 min_df.replace(0.0, np.nan, inplace=True)
 min_df.sort_index(inplace=True)
-min_df = min_df.loc[min_df.index > '2024-01-01']  # OUT-SAMPLE
+min_df = min_df.loc[min_df.index > '2024-01-01']  # IN-SAMPLE
 
 
 assets = [col.replace("close_", "") for col in strategy.columns]
@@ -233,9 +255,13 @@ for i, row in results_df.iterrows():
 
     if len(open_trades) < cap:
 
+        if (len(open_trades) > 0):
+            if row['asset'] in [t[0] for t in open_trades]:
+                continue
+
         filtered_trades.append(row)
         open_trades.append((row['asset'], hold_end_time))
-        #print(open_trades)
+        print(open_trades)
 
         max_time = max(t[1] for t in open_trades)
         #print("max time = ", max_time)
@@ -261,10 +287,6 @@ for i, row in results_df.iterrows():
 
 filtered_df = pd.DataFrame(filtered_trades)
 print(filtered_df.head(50))
-
-# Replace the incorrect compounding logic with correct equal-weight averaging
-
-# ... [rest of your code is unchanged up to portfolio return calculation] ...
 
 chunks = [filtered_df.iloc[i:i+cap] for i in range(0, len(filtered_df), cap)]
 returns_summary = []
