@@ -1,1 +1,4 @@
 I DID NOT UPLOAD THE CSV FILES WHERE I HAVE THE MARKET MINUTE DATA BECAUSE THEY ARE HUGE.
+In this project I am developing a backtesting platform with minute data. On the CROSS_SECTIONAL_ALPHAS IN-SAMPLE.py, I generate trading signals with daily candles, and then I put those signals on a minute by minute dataframe from a minute
+csv file that is not in this repo because its very big. Here I am trying to find efficient portafolio stratgies that allocate capital to different assets.
+My goal is to have a platform that lets me backtest hypostheis or trading startegies accorss many assets that will save me time. 
