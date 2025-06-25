@@ -30,7 +30,11 @@ stop_loss_pct = 0.03
 holding_days = 40
 slippage = 0.001
 fees = 0.002
-cap = 4 # NUMBER OF ASSET TO DIVERSIFY
+cap = 2 # NUMBER OF ASSET TO DIVERSIFY
+weight_allocation = [0.8, 0.2]  # 🔁 <-- Change this easily in future
+
+if len(weight_allocation) != cap:
+    raise ValueError(f"Length of weight_allocation ({len(weight_allocation)}) must match cap ({cap})")
 
 asset_trading_hours = {
     "NFLX": 6.5,
@@ -51,12 +55,12 @@ asset_trading_hours = {
 }
 
 
-exclude = index + metals  + crypto 
-close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
-#close_cols = [col for col in data.columns if col.startswith('close_')]
+#exclude = index + metals  + crypto 
+#close_cols = [col for col in data.columns if col.startswith('close_') and col.split('_')[1] not in exclude]
+close_cols = [col for col in data.columns if col.startswith('close_')]
 df_close = data[close_cols].copy()
 df_close = df_close.dropna()
-print(df_close.head(300))
+print(df_close.head(100))
 
 def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
     volatility = pd.DataFrame(index=df_close.index)
@@ -77,71 +81,27 @@ def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
 volatility = apply_volatility_to_df(df_close, window=100)
 
 volatility_clean = volatility.dropna(how='any')  # Filtra filas con al menos un NaN
+print(volatility_clean.head(100))
 
-vol_ranks = volatility_clean.rank(axis=1, ascending=False) # FALSE:MOST VOLATILE, TRUE:LESS VOLATILE
+vol_ranks = volatility_clean.rank(axis=1, ascending=True) # FALSE:MOST VOLATILE, TRUE:LESS VOLATILE
+print(vol_ranks.head(100))
+
+weights_df = pd.DataFrame(index=vol_ranks.index, columns=vol_ranks.columns, dtype='float64')
+
+for date in vol_ranks.index:
+    ranks_today = vol_ranks.loc[date]
+    selected = ranks_today[ranks_today <= cap].sort_values()
+
+    for i, (col, rank) in enumerate(selected.items()):
+        weight = weight_allocation[i]
+        weights_df.at[date, col] = weight
+
+print(weights_df.head(100))
 
 long_signal = (vol_ranks <= cap).astype(int)
 print(long_signal.head(100))
 
-
-
-
-
-"""
-lookback = 30
-strategy = pd.DataFrame(0, index=df_close.index, columns=df_close.columns)
-
-for asset_col in df_close.columns:
-    print("asset_col = ", asset_col)
-    for i in df_close.index:
-        if i < df_close.index[0] + pd.Timedelta(days=lookback):
-            continue
-
-        df = df_close.loc[i - pd.Timedelta(days=lookback):i, asset_col]
-        #print(df)
-        df = df.dropna()
-        #print(df)
-
-        price_direction = df.iloc[-1] - df.iloc[0]
-        #print("price direction = ", price_direction)
-        diff = df.diff()
-        #print("diff = ", diff)
-        mean = diff.mean()
-        #print("mean = ", mean)
-        std_dev = diff.std()
-        #print("std = ", std_dev)
-        threshold = diff.mean() + 3 * diff.std()
-        #print("second std = ", threshold)
-
-        best_line = np.polyfit(df[:-1], df[1:], 1)
-        slope = best_line[0]
-
-        if slope > 0.5 and price_direction > threshold:
-            #print("SIGNAL!")
-            strategy.at[i, asset_col] = slope
-           
-        
-        #print("---------------------------------------")
-
-
-#print(strategy.head(100))
-strategy = strategy.replace(0, np.nan)
-
-
-valid_rows = strategy.notna().sum(axis=1) >= cap
-print("valid rows = ", valid_rows.loc['2020-07-10'])
-print("valid rows = ", valid_rows.loc['2020-07-11'])
-
-filtered_strategy = strategy[valid_rows]
-print(filtered_strategy.loc['2020-07-11'])
-
-
-
-ranks = filtered_strategy.rank(axis=1, ascending=False)
-
-
-strategy = (ranks <= cap).astype(int)
-
+strategy = long_signal
 
 
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
@@ -157,15 +117,27 @@ for asset in assets:
     if signal_col not in min_df.columns:
         min_df[signal_col] = np.nan
 
+for asset in assets:
+    weight_col = f'weight_{asset}'
+    if weight_col not in min_df.columns:
+        min_df[weight_col] = np.nan
+
+
 for date in strategy.index:
     timestamp = pd.Timestamp(f"{date.date()} 23:59:00")
 
     if timestamp in min_df.index:
         for asset in assets:
             signal_col = f'signal_{asset}'
+            weight_col = f'weight_{asset}'
+
             signal = strategy.at[date, f'close_{asset}']
+            weight = weights_df.at[date, f'close_{asset}']
+
             min_df.at[timestamp, signal_col] = signal
 
+            if signal == 1 and not pd.isna(weight):
+                min_df.at[timestamp, weight_col] = weight
 
 
 results = []
@@ -256,6 +228,9 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
 
         ret = (exit_price - entry_price) / entry_price if position == 1 else (entry_price - exit_price) / entry_price
 
+        weight_col = f"weight_{asset}"
+        weight = min_df.at[signal_time, weight_col] if weight_col in min_df.columns else np.nan
+
         results.append({
             "asset": asset,
             "entry_time": entry_time,
@@ -265,8 +240,10 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
             "return": ret,
             "exit_reason": exit_reason,
             "hold_period_day": holding_limit_idx,
-            "position": position
+            "position": position,
+            "weight": weight
         })
+
 
 
 
@@ -278,6 +255,8 @@ results_df.to_csv("results_df_IN_SAMPLE.csv")
 
 results_df = pd.read_csv("results_df_IN_SAMPLE.csv")
 print(results_df.head(30))
+
+
 
 filtered_trades = []
 open_trades = []
@@ -328,6 +307,7 @@ for i, row in results_df.iterrows():
 filtered_df = pd.DataFrame(filtered_trades)
 print(filtered_df.head(50))
 
+
 chunks = [filtered_df.iloc[i:i+cap] for i in range(0, len(filtered_df), cap)]
 returns_summary = []
 portfolio_returns = []
@@ -336,7 +316,7 @@ return_dates = []
 for chunk in chunks:
     if len(chunk) == cap:
         # FIX: Correct portfolio return for equal capital allocation (not compounded)
-        total_return = chunk['return'].mean()  # <== THIS IS THE FIX
+        total_return = np.sum(chunk['return'] * chunk['weight'])
 
         assets = ', '.join(chunk['asset'])
         entry_times = ', '.join(chunk['entry_time'].astype(str))
@@ -466,9 +446,6 @@ fig.add_annotation(
 import plotly.io as pio
 pio.renderers.default = "browser"
 fig.show()
-
-"""
-
 
 
 """
