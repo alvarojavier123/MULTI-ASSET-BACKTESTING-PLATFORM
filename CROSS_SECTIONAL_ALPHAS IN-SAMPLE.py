@@ -1,6 +1,10 @@
 import pandas as pd
 pd.set_option("display.max_rows", None)
+pd.set_option('display.float_format', lambda x: '%.10f' % x)
+
+
 import numpy as np
+np.set_printoptions(suppress=True, precision=10)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import math
@@ -15,43 +19,48 @@ data = data.apply(pd.to_numeric, errors='coerce')
 data.replace(0.0, np.nan, inplace=True)
 data = data.loc[data.index < '2024-01-01']  # IN-SAMPLE
 
-stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", "JPM", "INTC", "BAC"]
-tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC"]
+stocks = [
+      "NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "WFC", "ORCL", 
+      "JPM", "INTC", "BAC", "TSLA", "BABA", "V", "T", "WMT", "PFE"]
+
+tech_stocks = ["NFLX", "AAPL", "MSFT", "NVDA", "GOOGL", "META",  "AMZN", "ORCL", "INTC", "BABA"]
 bank_stocks = ["WFC", "JPM", "BAC"]
 metals = ["XAU"]
 index = ["US500"]
 crypto = ["BTCUSD"]
 
-FTMO = ["AAPL", "AMZN", "BAC", "META", "GOOGL", "MSFT", "NFLX", "NVDA", "XAU", "BTC", "US500"] # I ALREADY HAVE
-FTMO = ["all forex", "BABA", "TSLA", "PFE", "V", "ZM", "WMT" , "T" , "RACE" , "BAYGn", "ALVG"] # MISSING
 
-take_profit_pct = 0.3  
-stop_loss_pct = 0.03 
-holding_days = 40
+take_profit_pct = 0.2  
+stop_loss_pct = 0.05
+holding_days = 20
 slippage = 0.001
 fees = 0.002
 cap = 2 # NUMBER OF ASSET TO DIVERSIFY
-weight_allocation = [0.8, 0.2]  # 🔁 <-- Change this easily in future
+weight_allocation = [0.5, 0.5]  
 
 if len(weight_allocation) != cap:
     raise ValueError(f"Length of weight_allocation ({len(weight_allocation)}) must match cap ({cap})")
 
 asset_trading_hours = {
-    "NFLX": 6.5,
-    "AAPL": 6.5,
-    "MSFT": 6.5,
-    "NVDA": 6.5,
-    "GOOGL": 6.5,
-    "META": 6.5,
-    "AMZN": 6.5,
-    "WFC": 6.5,
-    "ORCL": 6.5,
-    "JPM": 6.5,
-    "INTC": 6.5,
-    "BAC": 6.5,
-    "XAU": 23,
-    "US500": 23,
-    "BTCUSD": 24
+    # === Stocks (US Market: 6.5h/día) ===
+    "NFLX": 6.5, "AAPL": 6.5, "MSFT": 6.5, "NVDA": 6.5, "GOOGL": 6.5, "META": 6.5,
+    "AMZN": 6.5, "WFC": 6.5, "ORCL": 6.5, "JPM": 6.5, "INTC": 6.5, "BAC": 6.5,
+    "TSLA": 6.5, "BABA": 6.5, "V": 6.5, "T": 6.5, "WMT": 6.5, "PFE": 6.5,
+
+    # === Metals & Index ===
+    "XAU": 23,       # Gold: 23h (cierra 1h diaria por mantenimiento)
+    "US500": 23,     # S&P500 CFD: 23h/día típicamente (depende del bróker)
+
+    # === Crypto ===
+    "BTCUSD": 24,    # 24h/7d
+
+    # === Forex (24h de lunes a viernes, promedio diario ≈ 24h) ===
+    "AUDJPY": 24,
+    "EURUSD": 24,
+    "GBPUSD": 24,
+    "USDCAD": 24,
+    "USDCHF": 24,
+    "USDJPY": 24
 }
 
 
@@ -60,55 +69,16 @@ asset_trading_hours = {
 close_cols = [col for col in data.columns if col.startswith('close_')]
 df_close = data[close_cols].copy()
 df_close = df_close.dropna()
-print(df_close.head(100))
-
-def apply_volatility_to_df(df_close, window, factor=np.sqrt(252)):
-    volatility = pd.DataFrame(index=df_close.index)
-
-    for col in df_close.columns:
-        prices = df_close[col]
-        clean_prices = prices.dropna()
-        clean_returns = clean_prices.pct_change()
-        clean_vol = clean_returns.rolling(window=window, min_periods=window).std() * factor
-        full_vol = pd.Series(index=prices.index, dtype='float64')
-        full_vol.loc[clean_vol.index] = clean_vol
-
-        volatility[f'{col}'] = full_vol
-
-    return volatility
+#print(df_close.head(100))
 
 
-volatility = apply_volatility_to_df(df_close, window=100)
 
-volatility_clean = volatility.dropna(how='any')  # Filtra filas con al menos un NaN
-print(volatility_clean.head(100))
-
-vol_ranks = volatility_clean.rank(axis=1, ascending=True) # FALSE:MOST VOLATILE, TRUE:LESS VOLATILE
-print(vol_ranks.head(100))
-
-weights_df = pd.DataFrame(index=vol_ranks.index, columns=vol_ranks.columns, dtype='float64')
-
-for date in vol_ranks.index:
-    ranks_today = vol_ranks.loc[date]
-    selected = ranks_today[ranks_today <= cap].sort_values()
-
-    for i, (col, rank) in enumerate(selected.items()):
-        weight = weight_allocation[i]
-        weights_df.at[date, col] = weight
-
-print(weights_df.head(100))
-
-long_signal = (vol_ranks <= cap).astype(int)
-print(long_signal.head(100))
-
-strategy = long_signal
-
+"""
 
 min_df = pd.read_csv("ALL_ASSETS_MINUTES.csv", parse_dates=[0], index_col=0)
 min_df.replace(0.0, np.nan, inplace=True)
 min_df.sort_index(inplace=True)
 min_df = min_df.loc[min_df.index < '2024-01-01']  # IN-SAMPLE
-
 
 assets = [col.replace("close_", "") for col in strategy.columns]
 
@@ -138,6 +108,9 @@ for date in strategy.index:
 
             if signal == 1 and not pd.isna(weight):
                 min_df.at[timestamp, weight_col] = weight
+            
+            elif signal == -1 and not pd.isna(weight):
+                min_df.at[timestamp, weight_col] = weight
 
 
 results = []
@@ -157,10 +130,13 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
 
     valid_data = min_df[min_df[f"open_{asset}"].notna()][ohlc_cols].copy()
     valid_data = valid_data.sort_index()
+    #print(valid_data.head(50))
 
     for signal_time in signals.index:
+        #print(signal_time)
         position = signals.loc[signal_time, signal_col]
         future_data = valid_data.loc[signal_time:, ohlc_cols]
+        #print("future data = ", future_data)
 
         if future_data.empty:
             continue
@@ -244,12 +220,15 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
             "weight": weight
         })
 
+       
+
 
 
 
 results_df = pd.DataFrame(results)
 results_df = results_df.sort_values(by='entry_time').reset_index(drop=True)
 print(results_df.head(30))
+
 
 results_df.to_csv("results_df_IN_SAMPLE.csv")
 
@@ -280,7 +259,6 @@ for i, row in results_df.iterrows():
 
         filtered_trades.append(row)
         open_trades.append((row['asset'], hold_end_time))
-        print(open_trades)
 
         max_time = max(t[1] for t in open_trades)
         #print("max time = ", max_time)
@@ -446,7 +424,7 @@ fig.add_annotation(
 import plotly.io as pio
 pio.renderers.default = "browser"
 fig.show()
-
+"""
 
 """
 res = input("Continue ?")

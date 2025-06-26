@@ -56,8 +56,7 @@ df_close = df_close.dropna()
 print(df_close.head(300))
 
 # Calculate annualised returns
-annual_returns = ((((df_close.iloc[-1]-df_close.iloc[0]) /
-                    df_close.iloc[0])+1)**(252/len(df_close)) - 1)
+annual_returns = ((((df_close.iloc[-1]-df_close.iloc[0]) / df_close.iloc[0])+1)**(252/len(df_close)) - 1)
 
 # Print the annualised returns of the stocks
 print("The annualised returns of Microsoft is: ",

@@ -12,15 +12,18 @@ if not mt5.initialize():
 output_folder = "STOCKS-HOURS"
 #output_folder = "METALS-HOURS"
 #output_folder = "INDEX-HOURS"
-output_folder = "CRYPTO-HOURS"
+#output_folder = "CRYPTO-HOURS"
+output_folder = "FOREX-HOURS"
 
 os.makedirs(output_folder, exist_ok=True)
 
+FTMO = ["all forex", "BABA", "PFE", "V", "ZM", "WMT" , "T" , "RACE" , "BAYGn", "ALVG"] # MISSING
 # === Define stock tickers (exact names must match those in your MT5 Market Watch) ===
 #symbols = ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "NFLX"]
 #symbols = ['XAUUSD']
 symbols = ["NFLX", "BAC", "WFC", "ORCL", "INTC", "JPM"]
 symbols = ["BTCUSD"]
+symbols = ["AUDJPY"]
 
 #symbols = ["US500"]
 
@@ -58,7 +61,7 @@ for symbol in symbols:
     df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
     # Save to CSV
-    df.to_csv(f"{output_folder}/{symbol}.csv", index=False)
+    df.to_csv(f"ASSETS/{output_folder}/{symbol}.csv", index=False)
     print(f"✅ Saved: {symbol}.csv")
 
 # === Shutdown MT5 ===

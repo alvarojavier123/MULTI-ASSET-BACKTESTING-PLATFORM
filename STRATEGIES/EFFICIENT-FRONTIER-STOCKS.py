@@ -93,7 +93,7 @@ print("The portfolio returns is: ", str(round(portfolio_returns*100, 2)) + "%")
 # Calculate covariance and correlation
 cov_matrix = np.cov(price_returns[close_cols[0]], price_returns[close_cols[1]], bias=True) * 252
 print(f"The covariance of {my_assets[0]} and {my_assets[1]} is: ", round(cov_matrix[0, 1], 4))
-
+print(cov_matrix[0, 1])
 # Calculate portfolio standard deviation
 portfolio_std_dev = math.sqrt((a**2)*(annual_std_dev[close_cols[0]]**2) + (b**2)*(annual_std_dev[close_cols[1]]**2)
                                + 2*a*b*cov_matrix[0, 1])

@@ -10,11 +10,14 @@ symbols = ['US500']
 symbols = ["ORCL", "INTC", "JPM"] # MISSING
 symbols = ["JPM"]
 symbols = ["BTCUSD"]
+symbols = ["T"]
+symbols = ["AUDJPY"]
 
-output_folder = "STOCKS-MINUTES"
 #output_folder = "METALS-MINUTES"
 #output_folder = "INDEX-MINUTES"
 output_folder = "CRYPTO-MINUTES"
+output_folder = "STOCKS-MINUTES"
+output_folder = "FOREX-MINUTES"
 
 start_date = datetime(2020, 1, 1)
 end_date = datetime.now()
@@ -27,6 +30,8 @@ if not mt5.initialize():
 
 # === Crear carpeta de salida ===
 os.makedirs(output_folder, exist_ok=True)
+
+FTMO = ["all forex", "BABA", "PFE", "V", "ZM", "WMT" , "T" , "RACE" , "BAYGn", "ALVG"] # MISSING
 
 # === Descargar datos por símbolo ===
 for symbol in symbols:
@@ -54,7 +59,7 @@ for symbol in symbols:
     # === Guardar CSV si hay datos ===
     if all_data:
         final_df = pd.concat(all_data)
-        final_df.to_csv(f"{output_folder}/{symbol}.csv", index=False)
+        final_df.to_csv(f"ASSETS/{output_folder}/{symbol}.csv", index=False)
         print(f"✅ Guardado: {symbol} ({len(final_df)} filas)\n")
     else:
         print(f"❌ No se encontró data para {symbol}\n")

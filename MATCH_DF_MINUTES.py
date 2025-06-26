@@ -3,7 +3,9 @@ import os
 from datetime import datetime
 
 # === CONFIG ===
-folders = ["STOCKS-MINUTES", "METALS-MINUTES", "INDEX-MINUTES", "CRYPTO-MINUTES"]
+folders = ["ASSETS/STOCKS-MINUTES", "ASSETS/METALS-MINUTES", "ASSETS/INDEX-MINUTES", "ASSETS/CRYPTO-MINUTES",
+           "ASSETS/FOREX-MINUTES"]
+
 start_date = "2020-01-01 00:00:00"
 end_date = datetime.today().strftime("%Y-%m-%d %H:%M:00")
 
