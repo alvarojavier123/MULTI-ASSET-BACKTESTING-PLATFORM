@@ -108,31 +108,19 @@ for current_date in tqdm(df_close.index):
 
     objective = cp.Maximize(final_portfolio_value)
 
-    """
-    max_total_allocation = 0.5  # Only deploy 80% of capital
-    constraints = [0.0 <= weights,weights <= 0.5, cp.sum(weights) <= max_total_allocation]  # Total exposure ≤ 80%
-    """
 
-
-    constraints = [0.0 <= weights, weights <= 0.5, cp.sum(weights) == 1] 
-
+    constraints = [0.0 <= weights, weights <= 0.5, cp.sum(weights) == 1] # max 30% per asset
  
+
     problem = cp.Problem(objective, constraints)
   
     problem.solve(solver=cp.SCS)
-    
-    """
-    weights_val = weights.value
-    weights_val[weights_val < 1e-3] = 0.0  # Elimina los insignificantes
-    # NO re-normalices aquí si quieres mantener la suma ≤ 0.8
-    """
 
 
     weights_val = weights.value
     weights_val[weights_val < 1e-3] = 0.0  # Set anything < 0.001 to 0
     weights_val = weights_val / weights_val.sum()  # Re-normalize to make sure sum is 1
     #print("Cleaned weights:", weights_val)
-    
 
     selected_assets = df_cumulative_returns.columns[weights_val > 0]
     #print(selected_assets)
@@ -202,7 +190,6 @@ results = []
 
 for asset in tqdm(assets, desc="Backtesting Progress"):
 
-    #print(asset)
     hours_per_day = asset_trading_hours[asset]
     holding_period_minutes = int(holding_days * hours_per_day * 60)
 
@@ -211,17 +198,13 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
 
     columns = ohlc_cols + [signal_col]
     signals = min_df[(min_df[signal_col].notna()) & (min_df[signal_col] != 0)][columns]
-    #print(f"{asset} - N señales: {len(signals)}")
 
     valid_data = min_df[min_df[f"open_{asset}"].notna()][ohlc_cols].copy()
     valid_data = valid_data.sort_index()
-    #print(valid_data.head(50))
 
     for signal_time in signals.index:
-        #print(signal_time)
         position = signals.loc[signal_time, signal_col]
         future_data = valid_data.loc[signal_time:, ohlc_cols]
-        #print("future data = ", future_data)
 
         if future_data.empty:
             continue
@@ -229,6 +212,7 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
         future_data['cum_minutes'] = range(1, len(future_data) + 1)
         entry_time = future_data.iloc[0].name
         entry_price = future_data.iloc[0][f"open_{asset}"] * (1 + slippage)
+
         """
         if position == 1:
             tp_price = entry_price * (1 + take_profit_pct)
@@ -243,9 +227,6 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
 
             future_data["hit_tp"] = future_data[f"low_{asset}"] <= tp_price
             future_data["hit_sl"] = future_data[f"high_{asset}"] >= sl_price
-
-        else:
-            continue
         """
 
         holding_limit_idx = future_data[future_data['cum_minutes'] <= holding_period_minutes].index.max()
@@ -256,13 +237,11 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
         """
         tp_idx = future_data[future_data["hit_tp"]].index.min()
         sl_idx = future_data[future_data["hit_sl"]].index.min()
-        """
 
         exit_time = None
         exit_reason = None
         exit_price = None
 
-        """
         if pd.notna(tp_idx) and pd.notna(sl_idx):
             if tp_idx < sl_idx:
                 exit_time = tp_idx
@@ -311,7 +290,6 @@ for asset in tqdm(assets, desc="Backtesting Progress"):
             "signal time": signal_time
         })
 
-       
 
 
 results_df = pd.DataFrame(results)
